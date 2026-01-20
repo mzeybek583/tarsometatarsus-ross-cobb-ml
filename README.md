@@ -11,7 +11,7 @@ Key features:
 ## Input data
 Place your Excel file here:
 
-- `data/data.xlsx`
+- `data/sampledata.xlsx`
 
 Expected sheets:
 - `Ross`
