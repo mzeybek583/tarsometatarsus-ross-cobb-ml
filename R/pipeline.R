@@ -5,6 +5,7 @@
 #  - Normalize Turkish characters to ASCII (using Unicode escapes)
 #  - NO PLOTLY: PCA saved as normal PNG (base R + ggplot2)
 #  - BIGGER TEXT in figures
+#  - Within-group outlier detection for PCA
 ############################################################
 
 # -------------------------
@@ -22,13 +23,13 @@ options(stringsAsFactors = FALSE)
 # -------------------------
 # Plot text sizing (global knobs)
 # -------------------------
-BASE_CEX   <- 1.35   # base R plots text scale
+BASE_CEX   <- 1.35
 AXIS_CEX   <- 1.20
 LAB_CEX    <- 1.35
 MAIN_CEX   <- 1.45
 LEGEND_CEX <- 1.15
 
-GGP_BASE_SIZE <- 15  # ggplot base font size
+GGP_BASE_SIZE  <- 15
 GGP_TITLE_SIZE <- 17
 
 # -------------------------
@@ -72,29 +73,23 @@ normalize_ascii <- function(x) {
   if (is.null(x)) return(x)
   x <- as.character(x)
   
-  # g/G
-  x <- gsub("\u011F", "g", x)  # g-breve
-  x <- gsub("\u011E", "G", x)  # G-breve
+  x <- gsub("\u011F", "g", x)
+  x <- gsub("\u011E", "G", x)
   
-  # dotless i / dotted I
-  x <- gsub("\u0131", "i", x)  # dotless i
-  x <- gsub("\u0130", "I", x)  # dotted capital I
+  x <- gsub("\u0131", "i", x)
+  x <- gsub("\u0130", "I", x)
   
-  # s/S cedilla
-  x <- gsub("\u015F", "s", x)  # s-cedilla
-  x <- gsub("\u015E", "S", x)  # S-cedilla
+  x <- gsub("\u015F", "s", x)
+  x <- gsub("\u015E", "S", x)
   
-  # c/C cedilla
-  x <- gsub("\u00E7", "c", x)  # c-cedilla
-  x <- gsub("\u00C7", "C", x)  # C-cedilla
+  x <- gsub("\u00E7", "c", x)
+  x <- gsub("\u00C7", "C", x)
   
-  # o/O umlaut
-  x <- gsub("\u00F6", "o", x)  # o-umlaut
-  x <- gsub("\u00D6", "O", x)  # O-umlaut
+  x <- gsub("\u00F6", "o", x)
+  x <- gsub("\u00D6", "O", x)
   
-  # u/U umlaut
-  x <- gsub("\u00FC", "u", x)  # u-umlaut
-  x <- gsub("\u00DC", "U", x)  # U-umlaut
+  x <- gsub("\u00FC", "u", x)
+  x <- gsub("\u00DC", "U", x)
   
   x
 }
@@ -111,9 +106,9 @@ normalize_factor_levels <- function(f) {
 theme_base_big <- function() {
   ggplot2::theme_minimal(base_size = GGP_BASE_SIZE) +
     ggplot2::theme(
-      plot.title = ggplot2::element_text(size = GGP_TITLE_SIZE, face = "bold"),
-      axis.title = ggplot2::element_text(size = GGP_BASE_SIZE),
-      axis.text  = ggplot2::element_text(size = GGP_BASE_SIZE - 1),
+      plot.title   = ggplot2::element_text(size = GGP_TITLE_SIZE, face = "bold"),
+      axis.title   = ggplot2::element_text(size = GGP_BASE_SIZE),
+      axis.text    = ggplot2::element_text(size = GGP_BASE_SIZE - 1),
       legend.title = ggplot2::element_text(size = GGP_BASE_SIZE),
       legend.text  = ggplot2::element_text(size = GGP_BASE_SIZE - 1)
     )
@@ -179,20 +174,28 @@ if (any(fac_cols)) data[fac_cols] <- lapply(data[fac_cols], normalize_factor_lev
 # Report missing values BEFORE omitting
 na_by_col <- colSums(is.na(data))
 na_total  <- sum(is.na(data))
+
 write.csv(
   data.frame(variable = names(na_by_col), n_missing = as.integer(na_by_col)),
   file.path(out_dir, "missing_values_by_column.csv"),
   row.names = FALSE
 )
-cat("\n--- MISSING VALUES (TOTAL) ---\n")
+
+cat("\n--- MISSING VALUES (TOTAL CELLS) ---\n")
 print(na_total)
 cat("\n--- MISSING VALUES BY COLUMN ---\n")
 print(na_by_col)
 
 # Drop NA rows (complete-case)
+n_before <- nrow(data)
 data <- na.omit(data)
+n_after <- nrow(data)
+n_removed <- n_before - n_after
+
 cat("\n--- COMPLETE-CASE N ---\n")
-print(nrow(data))
+print(n_after)
+cat("\n--- ROWS REMOVED (>=1 NA) ---\n")
+print(n_removed)
 
 cat("\n--- DATA STRUCTURE ---\n")
 str(data)
@@ -313,11 +316,18 @@ save_png("roc_curve_comparison.png", {
   plot(roc_rf,  col = "blue",  main = "ROC Curve Comparison", legacy.axes = TRUE)
   lines(roc_svm, col = "red")
   lines(roc_glm, col = "green")
-  legend("bottomright",
-         legend = c(sprintf("RF (AUC=%.3f)",  pROC::auc(roc_rf)),
-                    sprintf("SVM (AUC=%.3f)", pROC::auc(roc_svm)),
-                    sprintf("GLM (AUC=%.3f)", pROC::auc(roc_glm))),
-         col = c("blue", "red", "green"), lwd = 2, cex = LEGEND_CEX)
+  legend(
+    "bottomright",
+    legend = c(
+      sprintf("RF (AUC=%.3f)",  pROC::auc(roc_rf)),
+      sprintf("SVM (AUC=%.3f)", pROC::auc(roc_svm)),
+      sprintf("GLM (AUC=%.3f)", pROC::auc(roc_glm))
+    ),
+    col = c("blue", "red", "green"),
+    lwd = 2,
+    cex = LEGEND_CEX,
+    bty = "n"
+  )
 })
 
 ############################################################
@@ -337,7 +347,7 @@ rf_imp_df <- rf_imp_df %>% dplyr::arrange(dplyr::desc(Overall))
 write.csv(rf_imp_df, file.path(out_dir, "variable_importance_rf.csv"), row.names = FALSE)
 
 g_varimp <- ggplot(rf_imp_df, aes(x = reorder(variable, Overall), y = Overall)) +
-  geom_point(size = 2) +
+  geom_point(size = 2.6) +
   coord_flip() +
   theme_base_big() +
   labs(title = "RF Variable Importance", x = "Predictor", y = "Importance")
@@ -362,8 +372,50 @@ write.csv(data.frame(best_feats = best_feats),
 save_png("rfe_performance.png", { plot(rfe_res, type = c("g", "o")) })
 
 ############################################################
-# 5. CORRELATION + PCA (NORMAL PNG) + ROBUST PCA + OUTLIERS
+# 5. CORRELATION + PCA (PNG) + WITHIN-GROUP OUTLIERS + ROBUST PCA
 ############################################################
+bump_step("5) Correlation, PCA (PNG), within-group outliers, robust PCA")
+
+# Correlation matrix (numeric only, excluding id)
+rm_id <- data[, !(names(data) %in% c("id")), drop = FALSE]
+num_cols_all <- sapply(rm_id, is.numeric)
+corr_matrix <- cor(rm_id[, num_cols_all, drop = FALSE],
+                   use = "pairwise.complete.obs", method = "pearson")
+
+save_png("correlation_matrix_corrplot.png", {
+  corrplot::corrplot(
+    corr_matrix,
+    method = "color",
+    tl.cex = 1.05,
+    cl.cex = 1.05
+  )
+})
+
+# PCA features (numeric only, exclude id)
+features <- names(data)[sapply(data, is.numeric) & !(names(data) %in% c("id"))]
+X <- data[, features, drop = FALSE]
+
+# Global PCA (for visualization)
+pca_res <- prcomp(X, center = TRUE, scale. = TRUE)
+
+scores <- as.data.frame(pca_res$x)
+scores$id   <- data$id
+scores$spec <- data$spec
+if ("yon" %in% names(data)) scores$yon <- data$yon
+
+# Save PCA loadings + variance explained
+loadings <- as.data.frame(pca_res$rotation)
+loadings$variable <- rownames(loadings)
+write.csv(loadings, file.path(out_dir, "pca_loadings.csv"), row.names = FALSE)
+
+ve <- pca_res$sdev^2 / sum(pca_res$sdev^2)
+ve_df <- data.frame(
+  PC = paste0("PC", seq_along(ve)),
+  Variance = ve,
+  CumVariance = cumsum(ve)
+)
+write.csv(ve_df, file.path(out_dir, "pca_variance_explained.csv"), row.names = FALSE)
+
 # -------------------------
 # Outlier detection (WITHIN-GROUP) to avoid labeling an entire class as outlier
 # -------------------------
@@ -382,26 +434,26 @@ detect_outliers_within_group <- function(X_df, spec_factor, alpha = 0.975, k_max
     n_g <- nrow(Xg)
     
     # Need enough rows to do PCA + covariance stably
-    if (n_g < 6) {
-      next
-    }
+    if (n_g < 6) next
     
     pca_g <- prcomp(Xg, center = TRUE, scale. = TRUE)
-    
     k_g <- min(k_max, ncol(pca_g$x), n_g - 1)
-    Sg  <- pca_g$x[, 1:k_g, drop = FALSE]
     
-    # Robust MD^2 in score space (fallback to classical if too small)
+    Sg <- pca_g$x[, 1:k_g, drop = FALSE]
+    
+    # Robust MD^2 in score space (fallback if needed)
+    md2_g <- NULL
     if (n_g >= (k_g + 2)) {
       cov_g <- rrcov::CovMcd(Sg)
       md2_g <- mahalanobis(Sg, center = cov_g@center, cov = cov_g@cov)
     } else {
       md2_g <- mahalanobis(Sg, center = colMeans(Sg), cov = stats::cov(Sg))
     }
+    
     md2_cut <- qchisq(alpha, df = k_g)
     flag_md <- md2_g > md2_cut
     
-    # SPE within-group (reconstruction error from group PCA model)
+    # SPE within-group (reconstruction error)
     Xg_scaled <- scale(Xg, center = pca_g$center, scale = pca_g$scale)
     scores_k  <- pca_g$x[, 1:k_g, drop = FALSE]
     rot_k     <- pca_g$rotation[, 1:k_g, drop = FALSE]
@@ -420,7 +472,6 @@ detect_outliers_within_group <- function(X_df, spec_factor, alpha = 0.975, k_max
   list(md2 = md2_all, spe = spe_all, is_outlier = flag_all)
 }
 
-# Run within-group outlier detection
 out_res <- detect_outliers_within_group(X_df = X, spec_factor = data$spec, alpha = alpha, k_max = k_max)
 
 scores$robust_md2 <- out_res$md2
@@ -438,24 +489,61 @@ outliers_tbl <- scores[order(-scores$outlier_score),
                        c("id","spec","robust_md2","SPE","is_outlier","outlier_score")]
 write.csv(outliers_tbl, file.path(out_dir, "pca_outliers_ranked_within_group.csv"), row.names = FALSE)
 
-# Re-plot PCA with corrected outlier flags
+# Base R PCA plot (PC1 vs PC2) - outliers marked
+save_png("pca_pc1_pc2_baseR_outliers_within_group.png", {
+  x <- scores$PC1
+  y <- scores$PC2
+  pch_vec <- ifelse(scores$is_outlier, 4, 16)
+  cols <- as.integer(scores$spec)
+  
+  plot(
+    x, y,
+    pch = pch_vec,
+    col = cols,
+    xlab = "PC1",
+    ylab = "PC2",
+    main = "PCA: PC1 vs PC2 (Within-group Outliers)"
+  )
+  
+  legend(
+    "topright",
+    legend = levels(scores$spec),
+    col = seq_along(levels(scores$spec)),
+    pch = 16,
+    bty = "n",
+    cex = LEGEND_CEX
+  )
+  
+  legend(
+    "bottomright",
+    legend = c("Non-outlier", "Outlier"),
+    pch = c(16, 4),
+    bty = "n",
+    cex = LEGEND_CEX
+  )
+})
+
+# ggplot PCA plot + ellipse drawn only on non-outliers
 g_pca <- ggplot(scores, aes(x = PC1, y = PC2, color = spec)) +
-  geom_point(aes(shape = is_outlier), size = 2, alpha = 0.85) +
-  stat_ellipse(level = 0.95) +
-  theme_minimal() +
-  labs(title = "PCA: PC1 vs PC2 (Outliers Marked - Within Group)", x = "PC1", y = "PC2") +
+  geom_point(aes(shape = is_outlier), size = 2.8, alpha = 0.9) +
+  stat_ellipse(
+    data = subset(scores, is_outlier == FALSE),
+    level = 0.95,
+    linewidth = 0.9
+  ) +
+  theme_base_big() +
+  labs(title = "PCA: PC1 vs PC2 (Ellipse on Non-outliers)", x = "PC1", y = "PC2") +
   scale_shape_manual(values = c(`FALSE` = 16, `TRUE` = 4))
 
 ggsave(
   filename = file.path(fig_dir, "pca_pc1_pc2_ggplot_outliers_within_group.png"),
   plot = g_pca,
-  width = 9, height = 6, dpi = 150
+  width = 10, height = 7, dpi = 150
 )
 
-
-# C) Scree plot (first 10 PCs)
+# Scree plot (first 10 PCs)
 g_scree <- ggplot(ve_df[1:min(10, nrow(ve_df)), ], aes(x = PC, y = Variance)) +
-  geom_point(size = 2) +
+  geom_point(size = 2.8) +
   theme_base_big() +
   labs(title = "PCA Scree Plot (First 10 PCs)", x = "Principal Component", y = "Proportion of Variance")
 
@@ -471,7 +559,7 @@ rpca_scores <- as.data.frame(rpca_res@scores)
 rpca_scores$spec <- data$spec
 
 g_rpca <- ggplot(rpca_scores, aes(x = PC1, y = PC2, color = spec)) +
-  geom_point(size = 2.6, alpha = 0.85) +
+  geom_point(size = 2.8, alpha = 0.9) +
   stat_ellipse(level = 0.95, linewidth = 0.9) +
   theme_base_big() +
   labs(title = "Robust PCA (Hubert): PC1 vs PC2", x = "PC1", y = "PC2")
@@ -573,8 +661,10 @@ write.csv(perf_tbl_sorted, file.path(out_dir, "model_performance_summary.csv"), 
 best_model_name <- perf_tbl_sorted$Model[1]
 cat("\nBest model by Accuracy:", best_model_name, "\n")
 
-glm_for_vif <- glm(spec ~ . - id, data = train_data, family = binomial)
+# VIF (glm may warn on separation; still export what is computed)
+glm_for_vif <- suppressWarnings(glm(spec ~ . - id, data = train_data, family = binomial))
 vif_vals <- car::vif(glm_for_vif)
+
 write.csv(data.frame(variable = names(vif_vals), VIF = as.numeric(vif_vals)),
           file.path(out_dir, "glm_vif_full_features.csv"),
           row.names = FALSE)
