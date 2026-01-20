@@ -374,6 +374,11 @@ ctrl_rfe <- rfeControl(functions = rfFuncs, method = "cv", number = 10, verbose 
 rfe_res <- rfe(x = predictors, y = response, sizes = sizes, rfeControl = ctrl_rfe)
 
 best_feats <- predictors(rfe_res)
+cat("\n--- RFE SELECTED VARIABLES ---\n")
+cat(paste(best_feats, collapse = ", "), "\n")
+cat("\n--- RFE SELECTED VARIABLES ---\n")
+cat(paste(best_feats, collapse = "\n"), "\n")
+
 write.csv(data.frame(best_feats = best_feats),
           file.path(out_dir, "rfe_selected_predictors.csv"),
           row.names = FALSE)
