@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this pipeline, please cite it."
-title: "Tarsometatarsus: Ankara vs Nigde - Full ML Pipeline"
+title: "Tarsometatarsus: Ross vs Cobb - Full ML Pipeline"
 type: software
 authors:
   - family-names: "Zeybek"
