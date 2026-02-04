@@ -48,18 +48,23 @@ bump_step <- function(msg) {
 }
 
 # -------------------------
-# Helpers: save base plots (SAVE + SHOW)
+# -------------------------
+# Helpers: save base plots (SAVE + SHOW)  [FIXED]
 # -------------------------
 save_png <- function(filename, expr, width = 2000, height = 1400, res = 150) {
-  # 1) show on screen
-  force(expr)
+  e <- substitute(expr)          # capture the expression
+  env <- parent.frame()
   
-  # 2) save to file
+  # 1) SHOW on screen (current device)
+  eval(e, envir = env)
+  
+  # 2) SAVE to file (png device)
   png(file.path(fig_dir, filename), width = width, height = height, res = res)
-  on.exit(dev.off(), add = TRUE)
-  
   op <- par(no.readonly = TRUE)
-  on.exit(par(op), add = TRUE)
+  on.exit({
+    par(op)
+    dev.off()
+  }, add = FALSE)
   
   par(
     cex = BASE_CEX,
@@ -69,8 +74,9 @@ save_png <- function(filename, expr, width = 2000, height = 1400, res = 150) {
     mar = c(5, 5, 4, 2) + 0.1
   )
   
-  force(expr)
+  eval(e, envir = env)           # draw again on png device
 }
+
 
 # -------------------------
 # Helpers: normalize Turkish chars to ASCII (ASCII-only source via Unicode escapes)
@@ -314,9 +320,8 @@ cat("\n=== PERFORMANCE TABLE (FULL MODELS) ===\n")
 print(perf_tbl)
 write.csv(perf_tbl, file.path(out_dir, "performance_full_models.csv"), row.names = FALSE)
 
-# ROC/AUC
-# ROC/AUC
-positive_class <- levels(test_data$spec)[1]
+# ROC/AUC (UPDATED: explicit positive class + line types + diagonal)
+positive_class <- "Ross"
 
 roc_rf  <- pROC::roc(response = test_data$spec, predictor = prob_rf[[positive_class]])
 roc_svm <- pROC::roc(response = test_data$spec, predictor = prob_svm[[positive_class]])
@@ -327,28 +332,32 @@ save_png("roc_curve_comparison.png", {
     roc_rf,
     col = "blue",
     lwd = 2,
-    lty = 1,              # solid
+    lty = 1,
     main = "ROC Curve Comparison",
     legacy.axes = TRUE
   )
+  
+  # random classifier
+  #abline(a = 0, b = 1, lty = 3, lwd = 1)
+  
+  # other models (distinct line types; thicker last to help if overlapped)
   lines(roc_svm, col = "red",   lwd = 2, lty = 2)  # dashed
-  lines(roc_glm, col = "green", lwd = 2, lty = 3)  # dotted
-
+  lines(roc_glm, col = "green", lwd = 3, lty = 4)  # dotdash + thicker
+  
   legend(
     "bottomright",
     legend = c(
-      sprintf("RF  (AUC = %.3f)", pROC::auc(roc_rf)),
+      sprintf("RF  (AUC = %.3f)",  pROC::auc(roc_rf)),
       sprintf("SVM (AUC = %.3f)", pROC::auc(roc_svm)),
       sprintf("GLM (AUC = %.3f)", pROC::auc(roc_glm))
     ),
     col = c("blue", "red", "green"),
-    lwd = 2,
-    lty = c(1, 2, 3),
+    lwd = c(2, 2, 3),
+    lty = c(1, 2, 4),
     cex = LEGEND_CEX,
     bty = "n"
   )
 })
-
 
 ############################################################
 # 4. FEATURE IMPORTANCE (RF varImp + RFE)
@@ -468,7 +477,7 @@ save_png("pca_pc1_pc2_baseR.png", {
   )
 })
 
-# ggplot PCA + ellipse
+# ggplot PCA + ellipse (NO outlier marking)
 g_pca <- ggplot(scores, aes(x = PC1, y = PC2, color = spec)) +
   geom_point(size = 2.8, alpha = 0.9) +
   stat_ellipse(level = 0.95, linewidth = 0.9) +
@@ -495,7 +504,7 @@ ggsave(
   width = 10, height = 7, dpi = 150
 )
 
-# Robust PCA (Hubert) - plot only
+# Robust PCA (Hubert) - plot only (NO outlier marking)
 rpca_res <- rrcov::PcaHubert(X, k = min(5, ncol(X)), scale = TRUE)
 rpca_scores <- as.data.frame(rpca_res@scores)
 rpca_scores$spec <- data$spec
@@ -518,8 +527,12 @@ ggsave(
 ############################################################
 bump_step("6) Remove highly correlated features and retrain")
 
+# IMPORTANT UPDATE: exclude id from correlation screening
 num_cols_train <- sapply(train_data, is.numeric)
-corr_mat_train <- cor(train_data[, num_cols_train, drop = FALSE], use = "pairwise.complete.obs")
+num_names_train <- names(train_data)[num_cols_train]
+num_names_train <- setdiff(num_names_train, "id")  # do not include id
+
+corr_mat_train <- cor(train_data[, num_names_train, drop = FALSE], use = "pairwise.complete.obs")
 high_corr_idx  <- caret::findCorrelation(corr_mat_train, cutoff = 0.9)
 high_corr_names <- colnames(corr_mat_train)[high_corr_idx]
 
