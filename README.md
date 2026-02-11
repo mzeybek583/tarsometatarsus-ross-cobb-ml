@@ -169,4 +169,4 @@ Citation
 
 If you use this codebase in academic work, please cite it as software:
 
-Zeybek, M. (2026). Tarsometatarsus: Ross vs Cobb — Full ML Pipeline (R). GitHub repository.
+Aydoğdu, S., Kök, R. R., Zeybek, M., & Eken, E. (2026). Determining Morphometric Differences in Domestic Fowl (Gallus gallus domesticus L. 1758) Tarsometatarsus Using Artificial Intelligence. Animals, 16(4), 530. https://doi.org/10.3390/ani16040530
