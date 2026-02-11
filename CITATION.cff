@@ -1,9 +1,22 @@
 cff-version: 1.2.0
-message: "If you use this pipeline, please cite it."
-title: "Tarsometatarsus: Ross vs Cobb - Full ML Pipeline"
-type: software
+message: "If you use this work, please cite it."
+title: "Determining Morphometric Differences in Domestic Fowl (Gallus gallus domesticus L. 1758) Tarsometatarsus Using Artificial Intelligence"
+type: article
 authors:
+  - family-names: "Aydoğdu"
+    given-names: "Sedat"
+  - family-names: "Kök"
+    given-names: "Reyhan Rabia"
   - family-names: "Zeybek"
     given-names: "Mustafa"
+  - family-names: "Eken"
+    given-names: "Emrullah"
+journal: "Animals"
+volume: 16
+issue: 4
+start: 530
+end: 530
 year: 2026
-license: "GPL-3.0"
+doi: "10.3390/ani16040530"
+url: "https://doi.org/10.3390/ani16040530"
+license: "CC-BY-4.0"
